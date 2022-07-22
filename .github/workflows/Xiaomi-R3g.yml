@@ -1,4 +1,4 @@
-name: Raspberry Pi B/B+/CM/Zero/ZeroW
+name: Build OpenWrt
 
 on:
   repository_dispatch:
@@ -10,24 +10,22 @@ on:
         default: 'false'
 
 env:
-  OPNAME: 'Raspberry Pi B/B+/CM/Zero/ZeroW'
   REPO_URL: 'https://github.com/immortalwrt/immortalwrt.git'
   REPO_BRANCH: 'openwrt-21.02'
   FEEDS_CONF: feeds.conf.default
-  CONFIG_FILE: configs/RPiZeroW.config
-  SYS_CONF_SH: configure.sh
-  PACKS: package.sh
+  CONFIG_FILE: .config
+  DIY_P1_SH: diy-part1.sh
+  DIY_P2_SH: diy-part2.sh
   UPLOAD_BIN_DIR: false
   UPLOAD_FIRMWARE: true
   UPLOAD_COWTRANSFER: false
   UPLOAD_WETRANSFER: false
-  UPLOAD_RELEASE: true
-
-  TZ: Asia/Ho_Chi_Minh
+  UPLOAD_RELEASE: false
+  TZ: Asia/Shanghai
 
 jobs:
   build:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
 
     steps:
     - name: Checkout
@@ -37,9 +35,9 @@ jobs:
       env:
         DEBIAN_FRONTEND: noninteractive
       run: |
+        sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc
         sudo -E apt-get -qq update
-        sudo -E apt-get -qq install curl
-        sudo -E apt-get -qq install $(curl -fsSL git.io/depends-ubuntu-1804)
+        sudo -E apt-get -qq install $(curl -fsSL git.io/depends-ubuntu-2004)
         sudo -E apt-get -qq autoremove --purge
         sudo -E apt-get -qq clean
         sudo timedatectl set-timezone "$TZ"
@@ -50,67 +48,52 @@ jobs:
       working-directory: /workdir
       run: |
         df -hT $PWD
-        git clone -b $REPO_BRANCH --single-branch $REPO_URL immortalwrt
-        ln -sf /workdir/immortalwrt $GITHUB_WORKSPACE/immortalwrt
+        git clone $REPO_URL -b $REPO_BRANCH openwrt
+        ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
 
     - name: Load custom feeds
       run: |
-        [ -e $FEEDS_CONF ] && mv $FEEDS_CONF immortalwrt/feeds.conf.default
-        chmod +x $SYS_CONF_SH
-        cd immortalwrt
-        $GITHUB_WORKSPACE/$SYS_CONF_SH
+        [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
+        chmod +x $DIY_P1_SH
+        cd openwrt
+        $GITHUB_WORKSPACE/$DIY_P1_SH
 
     - name: Update feeds
-      run: cd immortalwrt && ./scripts/feeds update -a
+      run: cd openwrt && ./scripts/feeds update -a
 
     - name: Install feeds
-      run: cd immortalwrt && ./scripts/feeds install -a
+      run: cd openwrt && ./scripts/feeds install -a
 
     - name: Load custom configuration
       run: |
-        [ -e files ] && mv files immortalwrt/files
-        [ -e $CONFIG_FILE ] && mv $CONFIG_FILE immortalwrt/.config
-        chmod +x $PACKS
-        cd immortalwrt/package
-        $GITHUB_WORKSPACE/$PACKS
+        [ -e files ] && mv files openwrt/files
+        [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
+        chmod +x $DIY_P2_SH
+        cd openwrt
+        $GITHUB_WORKSPACE/$DIY_P2_SH
 
     - name: SSH connection to Actions
       uses: P3TERX/ssh2actions@v1.0.0
       if: (github.event.inputs.ssh == 'true' && github.event.inputs.ssh  != 'false') || contains(github.event.action, 'ssh')
-      with:
-        mode: ngrok
       env:
-        # After sign up on the https://ngrok.com
-        # You can find this token here: https://dashboard.ngrok.com/auth/your-authtoken
-        NGROK_TOKEN: ${{ secrets.NGROK_TOKEN }}
-        
-        # ngrok server region [us, eu, au, ap, sa, jp, in] (optional, default: us)
-        # You can find this server region here: https://ngrok.com/docs#global-locations
-        NGROK_REGION: us
-
-        # This password you will use when authorizing via SSH
-        SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
 
-    # - name: Download package
-    #   id: package
-    #   run: |
-    #     cd immortalwrt
-    #     make defconfig
-    #     make download -j8
-    #     find dl -size -1024c -exec ls -l {} \;
-    #     find dl -size -1024c -exec rm -f {} \;
-
-    #     rm -rf package/lean/default-settings
-    #     mv $GITHUB_WORKSPACE/default-settings package/lean/
+    - name: Download package
+      id: package
+      run: |
+        cd openwrt
+        make defconfig
+        make download -j8
+        find dl -size -1024c -exec ls -l {} \;
+        find dl -size -1024c -exec rm -f {} \;
 
     - name: Compile the firmware
       id: compile
       run: |
-        cd immortalwrt
+        cd openwrt
         echo -e "$(nproc) thread compile"
-        make -j$(nproc) || make -j2 || make -j1 V=s
+        make -j$(nproc) || make -j1 || make -j1 V=s
         echo "::set-output name=status::success"
         grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
         [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
@@ -125,13 +108,13 @@ jobs:
       if: steps.compile.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
       with:
         name: OpenWrt_bin${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
-        path: immortalwrt/bin
+        path: openwrt/bin
 
     - name: Organize files
       id: organize
       if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
       run: |
-        cd immortalwrt/bin/targets/*/*
+        cd openwrt/bin/targets/*/*
         rm -rf packages
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
         echo "::set-output name=status::success"
@@ -172,12 +155,11 @@ jobs:
         echo "::set-output name=status::success"
 
     - name: Upload firmware to release
-      uses: softprops/action-gh-release@master
+      uses: softprops/action-gh-release@v1
       if: steps.tag.outputs.status == 'success' && !cancelled()
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        name: ${{ env.OPNAME }}
         tag_name: ${{ steps.tag.outputs.release_tag }}
         body_path: release.txt
         files: ${{ env.FIRMWARE }}/*
@@ -187,3 +169,12 @@ jobs:
       with:
         retain_days: 1
         keep_minimum_runs: 3
+
+    - name: Remove old Releases
+      uses: dev-drprasad/delete-older-releases@v0.1.0
+      if: env.UPLOAD_RELEASE == 'true' && !cancelled()
+      with:
+        keep_latest: 3
+        delete_tags: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
