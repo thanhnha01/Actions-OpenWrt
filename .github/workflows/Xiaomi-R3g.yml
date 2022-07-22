@@ -1,4 +1,4 @@
-name: Build OpenWrt
+name: Xiaomi R3g
 
 on:
   repository_dispatch:
