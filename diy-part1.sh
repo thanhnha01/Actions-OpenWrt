@@ -13,12 +13,12 @@
 # Uncomment a feed source
 #sed -i 's/^#\(.*helloworld\)/\1/' feeds.conf.default
 sed -i 's/192.168.1.1/192.168.2.1/g' package/base-files/files/bin/config_generate
-sed -i 's/ImmortalWrt/KTMWrt/g' package/base-files/files/bin/config_generate
+#sed -i 's/Openwrt/NTNWrt/g' package/base-files/files/bin/config_generate
 sed -i 's/UTC/<+07>-7/g' package/base-files/files/bin/config_generate
 
 # Add a feed source
 #echo 'src-git helloworld https://github.com/fw876/helloworld' >>feeds.conf.default
-#echo 'src-git passwall https://github.com/xiaorouji/openwrt-passwall' >>feeds.conf.default
-echo 'src-git kenzo https://github.com/kenzok8/openwrt-packages' >>feeds.conf.default
-echo 'src-git small https://github.com/kenzok8/small' >>feeds.conf.default
-echo "src-git modemfeed https://github.com/koshev-msk/modemfeed.git" >> feeds.conf.default
+echo 'src-git passwall https://github.com/xiaorouji/openwrt-passwall' >>feeds.conf.default
+#echo 'src-git kenzo https://github.com/kenzok8/openwrt-packages' >>feeds.conf.default
+#echo 'src-git small https://github.com/kenzok8/small' >>feeds.conf.default
+#echo "src-git modemfeed https://github.com/koshev-msk/modemfeed.git" >> feeds.conf.default
