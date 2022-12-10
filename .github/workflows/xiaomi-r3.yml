@@ -1,4 +1,4 @@
-name: Xiaomi R3g
+name: Xiaomi R3
 
 on:
   repository_dispatch:
